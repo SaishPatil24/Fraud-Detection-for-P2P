@@ -1,69 +1,52 @@
-
+# ml_model/predict.py
 import pickle
 import pandas as pd
 import numpy as np
 import json
 import sys
+import os
+import logging
+from fraud_detection import score_transaction, load_model
 
-def load_model(model_type="isolation_forest"):
-    try:
-        if model_type == "autoencoder":
-            with open("model/autoencoder.pkl", "rb") as f:
-                model = pickle.load(f)
-            with open("model/scaler_autoencoder.pkl", "rb") as f:
-                scaler = pickle.load(f)
-        else:
-            with open("model/isolation_forest.pkl", "rb") as f:
-                model = pickle.load(f)
-            with open("model/scaler.pkl", "rb") as f:
-                scaler = pickle.load(f)
-        return model, scaler
-    except Exception as e:
-        print(f"Error loading model: {e}", file=sys.stderr)
-        return None, None
-
-def score_transaction(transaction, model, scaler, model_type="isolation_forest"):
-    try:
-        tx_df = pd.DataFrame([transaction])
-        tx_scaled = scaler.transform(tx_df)
-        if model_type == "autoencoder":
-            reconstructed = model.predict(tx_scaled)
-            # Anomaly score: mean squared error between input and reconstruction
-            mse = np.mean(np.power(tx_scaled - reconstructed, 2), axis=1)
-            # Convert to 0-100 score (tune this mapping as needed)
-            fraud_score = int(np.clip(mse[0] * 100, 0, 100))
-        else:
-            score = model.decision_function(tx_scaled)[0]
-            fraud_score = int(max(0, min(100, (1 - (score + 0.5)) * 100)))
-        return {
-            "transaction": transaction,
-            "fraud_score": fraud_score,
-            "is_fraud": fraud_score > 80
-        }
-    except Exception as e:
-        print(f"Error scoring transaction: {e}", file=sys.stderr)
-        return {"error": str(e)}
+# Set up logging
+logging.basicConfig(level=logging.INFO, 
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-    # Read transaction + model_type from stdin (backward compatible)
+    # Read transaction + model_type from stdin
     try:
         input_json = json.loads(sys.stdin.read())
         # Support old as well as new payload shapes
         if isinstance(input_json, dict) and "transaction" in input_json:
             transaction = input_json["transaction"]
             model_type = input_json.get("model_type", "isolation_forest")
+            model_version = input_json.get("model_version", "latest")
         else:
             transaction = input_json
-            model_type = input_json.get("model_type", "isolation_forest")
+            model_type = "isolation_forest"
+            model_version = "latest"
     except Exception as e:
         print(json.dumps({"error": f"Failed to parse input: {str(e)}"}))
         sys.exit(1)
 
-    # Load the correct model
-    model, scaler = load_model(model_type)
-    if model is None or scaler is None:
-        print(json.dumps({"error": "Failed to load model"}))
+    # Score the transaction using our enhanced module
+    result = score_transaction(transaction, model_type, model_version)
+    
+    # Ensure backward compatibility with original output format
+    if "error" in result:
+        print(json.dumps(result))
         sys.exit(1)
-
-    result = score_transaction(transaction, model, scaler, model_type)
-    print(json.dumps(result))
+    
+    # Extract the fraud score and decision
+    fraud_score = result["fraud_score"]
+    is_fraud = result["is_fraud"]
+    
+    # Format response to match original format
+    response = {
+        "transaction": transaction,
+        "fraud_score": fraud_score,
+        "is_fraud": is_fraud
+    }
+    
+    print(json.dumps(response))
