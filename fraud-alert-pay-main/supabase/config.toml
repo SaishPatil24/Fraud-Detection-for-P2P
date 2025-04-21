@@ -1,0 +1,5 @@
+
+project_id = "tcwzklwrtzcwamiuesii"
+
+[functions.fraud-detection]
+verify_jwt = true
