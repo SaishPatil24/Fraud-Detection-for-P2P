@@ -190,6 +190,3 @@ The model will be periodically retrained with newly labeled data to adapt to evo
 - [ ] Integrate with external fraud databases
 - [ ] Implement A/B testing framework for model improvements
 
-## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
